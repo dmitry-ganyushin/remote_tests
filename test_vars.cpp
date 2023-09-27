@@ -1,29 +1,5 @@
 /*
- * Distributed under the OSI-approved Apache License, Version 2.0.  See
- * accompanying file Copyright.txt for details.
- *
- * Write a global array from multiple processors.
- *
- * A global array is an N-dimensional array. A process can write a sub-array
- * into the global array by stating the N-dimensional offset and the size of
- * the sub-array. At reading, one can read back any portion of the array
- * regardless of how many processors wrote that data.
- *
- * Processes are NOT required
- * - to stay in the boundaries of the global dimensions. However, one will not
- * be able to read back data outside of the boundaries.
- * - to fill the whole global array, i.e. one can leave holes in it. At reading,
- * one will get the fill-value set for the array for those coordinates that
- * are not written by any process.
- *
- * The global dimensions of a global array MUST NOT change over time.
- * If they are, then the array should be handled as a local array. Of course, if
- * only a single output step is written to a file, that still shows up at
- * reading as a global array.
- *
- * The decomposition of the array across the processes, however, can change
- * between output steps.
- *
+ *  Test program for remote reading
  * Created 9/27/2023
  *      Author: Dmitry Ganyushin ganyushin@gmail.com
  */
@@ -81,7 +57,6 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                 if (var.Shape().size() == 1 ){
                     auto globalSize = var.Shape()[0];
                     auto localSize = globalSize / nproc;
-                    std::cout << var.Shape()[0] << std::endl;
                     startX = localSize * rank;
                     countX = localSize;
                     std::vector<double> data1D(countX);
@@ -285,7 +260,7 @@ int main(int argc, char *argv[])
                     printf ("\n");
                     break;
                 case 'h':
-                    std::cout << "help" << std::endl;
+                    std::cout << "Usage: mpirun -n 8 ./test_vars  --case 3D --filename /absolute/path/on/remote/machine/remote.bp" << std::endl;
                     break;
                 case 'c':
                     if(strcmp("1D", optarg) == 0) {
@@ -294,6 +269,7 @@ int main(int argc, char *argv[])
                     if(strcmp("3D", optarg) == 0) {
                         mode = DIM3;
                     }
+                    break;
                 case 'f':
                     if (strlen(optarg) > 0){
                         filename = optarg;
