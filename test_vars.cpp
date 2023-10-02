@@ -8,7 +8,6 @@
 #include <string.h>
 #include <chrono>
 #include <iostream>
-#include <thread>
 #include <vector>
 
 #include <adios2.h>
@@ -19,17 +18,18 @@
 enum test_cases
 {
     DIM1,
-    DIM3
+    DIM3,
+    DIM3PLANEYZ
 };
-void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::ADIOS &adios, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count);
+void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count);
 /* test 2 and 3
  * read 1 or many 1D variables
  */
-void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::ADIOS &adios, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count);
+void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count);
 /* test 5
  * A 3D subset from 3D variable
  */
-void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::ADIOS &adios, std::vector<std::string> &variables_in, size_t start, size_t count)
+void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, size_t start, size_t count)
 {
     unsigned int startX = start;
     unsigned int countX = count;
@@ -39,8 +39,7 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
         std::chrono::time_point<std::chrono::system_clock> start;
         std::chrono::time_point<std::chrono::system_clock> end;
         start = std::chrono::system_clock::now();
-        adios2::IO io = adios.DeclareIO("Input");
-       // io.SetEngine("BP4");
+
 
         adios2::Engine reader = io.Open(filename, adios2::Mode::Read);
 
@@ -63,6 +62,8 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                     var.SetSelection(adios2::Box<adios2::Dims>({startX},
                                                                {countX}));
                     reader.Get<double>(var, data1D[0]);
+//                    for (auto v: data1D)
+//                        std::cout << v << std::endl;
                 }
             }
 
@@ -100,7 +101,7 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     }
 }
 
-void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::ADIOS &adios, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count)
+void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count)
 {
 
     unsigned int startX = start[0];
@@ -118,8 +119,6 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
         start_time = std::chrono::system_clock::now();
         // Get io settings from the config file or
         // create one with default settings here
-        adios2::IO io = adios.DeclareIO("Output");
-        //io.SetEngine("BP4");
 
         /*
          * Define global array: type, name, global dimensions
@@ -192,41 +191,117 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     }
 }
 
+void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count)
+{
+
+    unsigned int startX = start[0];
+    unsigned int startY = start[1];
+    unsigned int startZ = start[2];
+    unsigned int countX = count[0];
+    unsigned int countY = count[1];
+    unsigned int countZ = count[2];
+    std::vector<std::vector<double>> data2D;
+
+    try
+    {
+        std::chrono::time_point<std::chrono::system_clock> start_time;
+        std::chrono::time_point<std::chrono::system_clock> end_time;
+        start_time = std::chrono::system_clock::now();
+        // Get io settings from the config file or
+        // create one with default settings here
+
+        /*
+         * Define global array: type, name, global dimensions
+         * The local process' part (start, count) can be defined now or later
+         * before Write().
+         */
+
+        adios2::Engine reader = io.Open(filename, adios2::Mode::Read);
+        auto variables = io.AvailableVariables(true);
+
+        for (size_t step = 0; step < NSTEPS; step++)
+        {
+            reader.BeginStep();
+            for (auto const& var_name : variables)
+            {
+                adios2::Variable<double> var =
+                        io.InquireVariable<double>(var_name.first);
+                if (var.Shape().size() == 3 ) {
+                    auto globalSizeX = var.Shape()[0];
+                    auto globalSizeY = var.Shape()[1];
+                    auto globalSizeZ = var.Shape()[2];
+                    //read some plane in the middle
+                    countY = globalSizeY / nproc;
+                    startY = countY * rank;
+
+                    countX = 1;
+                    if (rank == nproc - 1)
+                    {
+                        // last process need to read all the rest of slices
+                        countY = globalSizeY - countY * (nproc - 1);
+                    }
+
+                    var.SetSelection(adios2::Box<adios2::Dims>(
+                            {startX, startY, 0}, {countX, countY, globalSizeZ}));
+                    reader.Get<double>(var, data2D[0][0]);
+                }
+            }
+
+            reader.EndStep();
+        }
+        reader.Close();
+        end_time = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed_seconds = end_time - start_time;
+        std::cout << elapsed_seconds.count() << std::endl;
+    }
+    catch (std::invalid_argument &e)
+    {
+        if (rank == 0)
+        {
+            std::cout << "Invalid argument exception, STOPPING PROGRAM\n";
+            std::cout << e.what() << "\n";
+        }
+    }
+    catch (std::ios_base::failure &e)
+    {
+        if (rank == 0)
+        {
+            std::cout << "System exception, STOPPING PROGRAM\n";
+            std::cout << e.what() << "\n";
+        }
+    }
+    catch (std::exception &e)
+    {
+        if (rank == 0)
+        {
+            std::cout << "Exception, STOPPING PROGRAM\n";
+            std::cout << e.what() << "\n";
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
 
     int rank = 0;
     int nproc;
-    int nprocx = 2;
-    int nprocy = 2;
-    int nprocz = 2;
 #if ADIOS2_USE_MPI
-    int provided;
-
-    // MPI_THREAD_MULTIPLE is only required if you enable the SST MPI_DP
-    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
+    MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 #endif
     const int NSTEPS = 1;
-    const int GLOBAL_SIZE = 128;
-    const int LOCAL_SIZE = 64;
 
 #if ADIOS2_USE_MPI
     adios2::ADIOS adios(MPI_COMM_WORLD);
 #else
     adios2::ADIOS adios;
 #endif
-    // Application variables for output get parameters from bp file
-    const unsigned int Nx = 0;
-    const unsigned int Ny = 0;
-    const unsigned int Nz = 0;
-    const unsigned int countX = 0;
-    const unsigned int countY = 0;
-    const unsigned int countZ = 0;
     //options
     std::string filename;
-    int mode;
+    std::string engine = "BP5";
+    std::string  transport = "filesystem";
+    int mode = -1;
 
     //should be adjusted for getopt
     auto start = std::vector<size_t>(3);
@@ -238,6 +313,8 @@ int main(int argc, char *argv[])
                 {"help", no_argument, NULL, 'h'},
                 {"case", required_argument, NULL, 'c'},
                 {"filename", required_argument, NULL, 'f'},
+                {"engine", required_argument, NULL, 'e'},
+                {"transport", required_argument, NULL, 'e'},
                 {0,0,0,0}
     };
 
@@ -260,6 +337,7 @@ int main(int argc, char *argv[])
                     printf ("\n");
                     break;
                 case 'h':
+                    std::cout << "Help: --case: 1D, 3D, 3DPlaneYZ" << std::endl;
                     std::cout << "Usage: mpirun -n 8 ./test_vars  --case 3D --filename /absolute/path/on/remote/machine/remote.bp" << std::endl;
                     break;
                 case 'c':
@@ -269,31 +347,55 @@ int main(int argc, char *argv[])
                     if(strcmp("3D", optarg) == 0) {
                         mode = DIM3;
                     }
+                    if(strcmp("3DplaneYZ", optarg) == 0) {
+                        mode = DIM3PLANEYZ;
+                    }
                     break;
                 case 'f':
                     if (strlen(optarg) > 0){
                         filename = optarg;
                     }
-
                     break;
+                case 'e':
+                    if (strlen(optarg) > 0){
+                        engine = optarg;
+                    }
+                    break;
+                case 't':
+                    if (strlen(optarg) > 0){
+                        transport = optarg;
+                    }
+                    break;
+
                 default:
                     break;
             }
         }
 
+    adios2::IO io = adios.DeclareIO("Input");
+    if (engine == "BP5")
+        io.SetEngine("BP5");
+    else if (engine == "BP4")
+        io.SetEngine("BP4");
+    if (transport == "http")
+        io.SetParameter("Librrary", "http");
+    else if (transport == "daos")
+        io.SetParameter("Library", "daos");
+
     switch (mode) {
-            case (DIM1):
-                read1D(nproc, rank, filename, NSTEPS, adios, variables, start[0], count[0]);
+            case DIM1:
+                read1D(nproc, rank, filename, NSTEPS, io, variables, start[0], count[0]);
             break;
-        case (DIM3):
-            read3D(nproc, rank, filename, NSTEPS, adios, variables, start, count);
+        case DIM3:
+            read3D(nproc, rank, filename, NSTEPS, io, variables, start, count);
             break;
+        case DIM3PLANEYZ:
+            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, start, count);
+            break;
+
             default:
                 break;
     }
-
-
-
 
 #if ADIOS2_USE_MPI
     MPI_Finalize();
