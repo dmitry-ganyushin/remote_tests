@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <adios2.h>
+
 #if ADIOS2_USE_MPI
 #include <mpi.h>
 #endif
@@ -314,13 +315,13 @@ int main(int argc, char *argv[])
                 {"case", required_argument, NULL, 'c'},
                 {"filename", required_argument, NULL, 'f'},
                 {"engine", required_argument, NULL, 'e'},
-                {"transport", required_argument, NULL, 'e'},
+                {"transport", required_argument, NULL, 't'},
                 {0,0,0,0}
     };
 
         while (1) {
             int option_index = 0;
-            const int opt = getopt_long(argc, argv, "hc:f:", longopts, &option_index);
+            const int opt = getopt_long(argc, argv, "hc:f:e:t:", longopts, &option_index);
 
             if (opt == -1) {
                 break;
@@ -377,10 +378,17 @@ int main(int argc, char *argv[])
         io.SetEngine("BP5");
     else if (engine == "BP4")
         io.SetEngine("BP4");
-    if (transport == "http")
-        io.SetParameter("Librrary", "http");
-    else if (transport == "daos")
-        io.SetParameter("Library", "daos");
+    if (transport == "http"){
+        std::map<std::string, std::string> parameters;
+        parameters["Library"] = "HTTP";
+        io.AddTransport("File", parameters);
+    }
+    else if (transport == "daos"){
+        std::map<std::string, std::string> parameters;
+        parameters["Library"] = "DAOS";
+        io.AddTransport("File", parameters);
+    }
+
 
     switch (mode) {
             case DIM1:
