@@ -378,12 +378,12 @@ int main(int argc, char *argv[])
         io.SetEngine("BP5");
     else if (engine == "BP4")
         io.SetEngine("BP4");
-    if (transport == "http"){
+    if (transport == "http" || transport == "HTTP" ){
         std::map<std::string, std::string> parameters;
         parameters["Library"] = "HTTP";
         io.AddTransport("File", parameters);
     }
-    else if (transport == "daos"){
+    else if (transport == "daos" || transport == "DAOS"){
         std::map<std::string, std::string> parameters;
         parameters["Library"] = "DAOS";
         io.AddTransport("File", parameters);
