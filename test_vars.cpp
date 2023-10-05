@@ -52,6 +52,7 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
             auto variables = io.AvailableVariables(true);
 
             for (auto const &var_name: variables) {
+                if(!variables_in.empty() && var_name.first != variables_in[0] ) continue;
                 adios2::Variable<double> var =
                         io.InquireVariable<double>(var_name.first);
                 if (var.Shape().size() == 1 ){
@@ -316,12 +317,13 @@ int main(int argc, char *argv[])
                 {"filename", required_argument, NULL, 'f'},
                 {"engine", required_argument, NULL, 'e'},
                 {"transport", required_argument, NULL, 't'},
+                {"variables", required_argument, NULL, 'v'},
                 {0,0,0,0}
     };
 
         while (1) {
             int option_index = 0;
-            const int opt = getopt_long(argc, argv, "hc:f:e:t:", longopts, &option_index);
+            const int opt = getopt_long(argc, argv, "hc:f:e:t:v:", longopts, &option_index);
 
             if (opt == -1) {
                 break;
@@ -367,7 +369,13 @@ int main(int argc, char *argv[])
                         transport = optarg;
                     }
                     break;
-
+                case 'v':
+                    if (strlen(optarg) > 0){
+                        std::string variables_string = optarg;
+                        //split and put into vector
+                        variables.push_back(variables_string);
+                    }
+                    break;
                 default:
                     break;
             }
