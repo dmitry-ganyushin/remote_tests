@@ -103,7 +103,7 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     }
 }
 
-void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count)
+void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, std::vector<size_t> &start, std::vector<size_t> &count)
 {
 
     unsigned int startX = start[0];
@@ -136,6 +136,7 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
             reader.BeginStep();
             for (auto const& var_name : variables)
             {
+                if(!variables_in.empty() && var_name.first != variables_in[0] ) continue;
                 adios2::Variable<double> var =
                         io.InquireVariable<double>(var_name.first);
                 if (var.Shape().size() == 3 ) {
@@ -193,7 +194,7 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     }
 }
 
-void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count)
+void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, std::vector<size_t> &start, std::vector<size_t> &count)
 {
 
     unsigned int startX = start[0];
@@ -226,6 +227,7 @@ void read3DPlane(int nproc, int rank, const std::string &filename, const int NST
             reader.BeginStep();
             for (auto const& var_name : variables)
             {
+                if(!variables_in.empty() && var_name.first != variables_in[0] ) continue;
                 adios2::Variable<double> var =
                         io.InquireVariable<double>(var_name.first);
                 if (var.Shape().size() == 3 ) {
