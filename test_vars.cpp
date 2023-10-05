@@ -112,7 +112,6 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     unsigned int countX = count[0];
     unsigned int countY = count[1];
     unsigned int countZ = count[2];
-    std::vector<std::vector<std::vector<double>>> data3D(countX, std::vector<std::vector<double>>(countY, std::vector<double>(countZ)));
 
     try
     {
@@ -149,11 +148,16 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
 
                     countX = globalSizeX / nproc;
                     startX = countX * rank;
+
                     if (rank == nproc - 1)
                     {
                         // last process need to read all the rest of slices
                         countX = globalSizeX - countX * (nproc - 1);
                     }
+                    std::vector<std::vector<std::vector<double>>> data3D(countX,
+                                                                         std::vector<std::vector<double>>(globalSizeY,
+                                                                                                          std::vector<double>(
+                                                                                                                  globalSizeZ)));
 
                     var.SetSelection(adios2::Box<adios2::Dims>(
                             {startX, 0, 0}, {countX, globalSizeY, globalSizeZ}));

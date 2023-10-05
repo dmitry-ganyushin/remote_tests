@@ -1,9 +1,9 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.16)
 project(remote_testing)
 
 set(_components C CXX)
 find_package(MPI COMPONENTS ${_components})
-find_package(ADIOS2 2.9.0 REQUIRED COMPONENTS ${_components})
+find_package(ADIOS2  REQUIRED COMPONENTS ${_components})
 
 
 add_executable(test_vars test_vars.cpp)
