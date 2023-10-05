@@ -19,21 +19,31 @@
 enum test_cases
 {
     DIM1,
-    DIM3,
-    DIM3PLANEYZ
+    DIM3X,
+    DIM3Y,
+    DIM3Z,
+    DIM3PLANEYZ,
+    DIM3PLANEXY,
+    DIM3PLANEXZ
 };
-void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count);
+void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables);
 /* test 2 and 3
  * read 1 or many 1D variables
  */
-void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, std::vector<size_t> &start, std::vector<size_t> &count);
+void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int direction);
 /* test 5
  * A 3D subset from 3D variable
  */
-void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, size_t start, size_t count)
+
+void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int direction);
+/* test 5
+ * A 3D subset from 3D variable
+ */
+
+void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in)
 {
-    unsigned int startX = start;
-    unsigned int countX = count;
+    unsigned int startX;
+    unsigned int countX;
 
     try
     {
@@ -103,15 +113,14 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     }
 }
 
-void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, std::vector<size_t> &start, std::vector<size_t> &count)
+void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, int direction)
 {
-
-    unsigned int startX = start[0];
-    unsigned int startY = start[1];
-    unsigned int startZ = start[2];
-    unsigned int countX = count[0];
-    unsigned int countY = count[1];
-    unsigned int countZ = count[2];
+    unsigned int startX;
+    unsigned int startY;
+    unsigned int startZ;
+    unsigned int countX;
+    unsigned int countY;
+    unsigned int countZ;
 
     try
     {
@@ -128,11 +137,12 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
          */
 
         adios2::Engine reader = io.Open(filename, adios2::Mode::Read);
-        auto variables = io.AvailableVariables(true);
+
 
         for (size_t step = 0; step < NSTEPS; step++)
         {
             reader.BeginStep();
+            auto variables = io.AvailableVariables(true);
             for (auto const& var_name : variables)
             {
                 if(!variables_in.empty() && var_name.first != variables_in[0] ) continue;
@@ -144,24 +154,48 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                     auto globalSizeZ = var.Shape()[2];
                     auto globalSize = globalSizeX * globalSizeY * globalSizeZ;
                     auto localSize = globalSize / nproc;
-                    std::cout << var.Shape()[0] << std::endl;
+                    //std::cout << var.Shape()[0] << std::endl;
+                   switch(direction) {
+                       case DIM3X:
+                           countX = globalSizeX / nproc;
+                           startX = countX * rank;
 
-                    countX = globalSizeX / nproc;
-                    startX = countX * rank;
+                           if (rank == nproc - 1) {
+                               // last process need to read all the rest of slices
+                               countX = globalSizeX - countX * (nproc - 1);
+                           }
 
-                    if (rank == nproc - 1)
-                    {
-                        // last process need to read all the rest of slices
-                        countX = globalSizeX - countX * (nproc - 1);
-                    }
-                    std::vector<std::vector<std::vector<double>>> data3D(countX,
-                                                                         std::vector<std::vector<double>>(globalSizeY,
-                                                                                                          std::vector<double>(
-                                                                                                                  globalSizeZ)));
+                           var.SetSelection(adios2::Box<adios2::Dims>(
+                                   {startX, 0, 0}, {countX, globalSizeY, globalSizeZ}));
+                           break;
+                       case DIM3Y:
+                           countY = globalSizeY / nproc;
+                           startY = countY * rank;
 
-                    var.SetSelection(adios2::Box<adios2::Dims>(
-                            {startX, 0, 0}, {countX, globalSizeY, globalSizeZ}));
-                    reader.Get<double>(var, data3D[0][0][0]);
+                           if (rank == nproc - 1) {
+                               // last process need to read all the rest of slices
+                               countY = globalSizeY - countY * (nproc - 1);
+                           }
+
+                           var.SetSelection(adios2::Box<adios2::Dims>(
+                                   {0, countY, 0}, {globalSizeX, countY, globalSizeZ}));
+                           break;
+                       case DIM3Z:
+                           countZ = globalSizeZ / nproc;
+                           startZ = countZ * rank;
+
+                           if (rank == nproc - 1) {
+                               // last process need to read all the rest of slices
+                               countZ = globalSizeZ - countZ * (nproc - 1);
+                           }
+
+                           var.SetSelection(adios2::Box<adios2::Dims>(
+                                   {0, 0, startZ}, {globalSizeX, globalSizeY, countZ}));
+                           break;
+                   }
+                    size_t elementsSize = var.SelectionSize();
+                    std::vector<double> data3D(elementsSize);
+                    reader.Get<double>(var, data3D.data(), adios2::Mode::Sync);
                 }
             }
 
@@ -198,37 +232,28 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     }
 }
 
-void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, std::vector<size_t> &start, std::vector<size_t> &count)
+void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, int direction)
 {
 
-    unsigned int startX = start[0];
-    unsigned int startY = start[1];
-    unsigned int startZ = start[2];
-    unsigned int countX = count[0];
-    unsigned int countY = count[1];
-    unsigned int countZ = count[2];
-    std::vector<std::vector<double>> data2D;
+    unsigned int startX;
+    unsigned int startY;
+    unsigned int startZ;
+    unsigned int countX;
+    unsigned int countY;
+    unsigned int countZ;
 
     try
     {
         std::chrono::time_point<std::chrono::system_clock> start_time;
         std::chrono::time_point<std::chrono::system_clock> end_time;
         start_time = std::chrono::system_clock::now();
-        // Get io settings from the config file or
-        // create one with default settings here
-
-        /*
-         * Define global array: type, name, global dimensions
-         * The local process' part (start, count) can be defined now or later
-         * before Write().
-         */
 
         adios2::Engine reader = io.Open(filename, adios2::Mode::Read);
-        auto variables = io.AvailableVariables(true);
 
         for (size_t step = 0; step < NSTEPS; step++)
         {
             reader.BeginStep();
+            auto variables = io.AvailableVariables(true);
             for (auto const& var_name : variables)
             {
                 if(!variables_in.empty() && var_name.first != variables_in[0] ) continue;
@@ -239,19 +264,60 @@ void read3DPlane(int nproc, int rank, const std::string &filename, const int NST
                     auto globalSizeY = var.Shape()[1];
                     auto globalSizeZ = var.Shape()[2];
                     //read some plane in the middle
-                    countY = globalSizeY / nproc;
-                    startY = countY * rank;
+                    switch(direction) {
+                        case DIM3PLANEXZ:
+                            countX = globalSizeX / nproc;
+                            startX = countX * rank;
 
-                    countX = 1;
-                    if (rank == nproc - 1)
-                    {
-                        // last process need to read all the rest of slices
-                        countY = globalSizeY - countY * (nproc - 1);
+                            if (rank == nproc - 1) {
+                                // last process need to read all the rest of slices
+                                countX = globalSizeX - countX * (nproc - 1);
+                            }
+                            countY = 1;
+                            startY = globalSizeY/2;
+
+                            startZ = 0;
+                            countZ = globalSizeZ;
+
+                            break;
+                        case DIM3PLANEYZ:
+                            countY = globalSizeY / nproc;
+                            startY = countY * rank;
+                            if (rank == nproc - 1) {
+                                // last process need to read all the rest of slices
+                                countY = globalSizeY - countY * (nproc - 1);
+                            }
+                            countX = 1;
+                            startX = globalSizeX/2;
+
+                            startZ = 0;
+                            countZ = globalSizeZ;
+
+                            break;
+
+                        case DIM3PLANEXY:
+                            countY = globalSizeY / nproc;
+                            startY = countY * rank;
+
+                            if (rank == nproc - 1) {
+                                // last process need to read all the rest of slices
+                                countY = globalSizeY - countY * (nproc - 1);
+                            }
+                            startX = 0;
+                            countX = globalSizeX;
+                            countZ = 1;
+                            startZ = globalSizeZ / 2;
+
+                            break;
+                        default:
+                            break;
                     }
-
                     var.SetSelection(adios2::Box<adios2::Dims>(
-                            {startX, startY, 0}, {countX, countY, globalSizeZ}));
-                    reader.Get<double>(var, data2D[0][0]);
+                            {startX, startY, startZ}, {countX, countY, countZ}));
+
+                    size_t elementsSize = var.SelectionSize();
+                    std::vector<double> data2D(elementsSize);
+                    reader.Get<double>(var, data2D.data(), adios2::Mode::Sync);
                 }
             }
 
@@ -346,18 +412,31 @@ int main(int argc, char *argv[])
                     printf ("\n");
                     break;
                 case 'h':
-                    std::cout << "Help: --case: 1D, 3D, 3DPlaneYZ" << std::endl;
-                    std::cout << "Usage: mpirun -n 8 ./test_vars  --case 3D --filename /absolute/path/on/remote/machine/remote.bp" << std::endl;
+                    std::cout << "Help: --case: 1D, 3DX, 3DY, 3DZ, 3DYZ, 3DXY, 3DXZ" << std::endl;
+                    std::cout << "Usage: mpirun -n 8 ./test_vars  --case 3DX --variables var1 --filename /absolute/path/on/remote/machine/remote.bp" << std::endl;
                     break;
                 case 'c':
                     if(strcmp("1D", optarg) == 0) {
                         mode = DIM1;
                     }
-                    if(strcmp("3D", optarg) == 0) {
-                        mode = DIM3;
+                    if(strcmp("3DX", optarg) == 0) {
+                        mode = DIM3X;
                     }
-                    if(strcmp("3DplaneYZ", optarg) == 0) {
+                    if(strcmp("3DY", optarg) == 0) {
+                        mode = DIM3Y;
+                    }
+                    if(strcmp("3DZ", optarg) == 0) {
+                        mode = DIM3Z;
+                    }
+
+                    if(strcmp("3DYZ", optarg) == 0) {
                         mode = DIM3PLANEYZ;
+                    }
+                    if(strcmp("3DXZ", optarg) == 0) {
+                        mode = DIM3PLANEXZ;
+                    }
+                    if(strcmp("3DXY", optarg) == 0) {
+                        mode = DIM3PLANEXY;
                     }
                     break;
                 case 'f':
@@ -405,18 +484,31 @@ int main(int argc, char *argv[])
 
 
     switch (mode) {
-            case DIM1:
-                read1D(nproc, rank, filename, NSTEPS, io, variables, start[0], count[0]);
+        case DIM1:
+            read1D(nproc, rank, filename, NSTEPS, io, variables);
             break;
-        case DIM3:
-            read3D(nproc, rank, filename, NSTEPS, io, variables, start, count);
+        case DIM3X:
+            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3X);
+            break;
+        case DIM3Y:
+            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3Y);
+            break;
+        case DIM3Z:
+            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3Z);
             break;
         case DIM3PLANEYZ:
-            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, start, count);
+            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEYZ);
             break;
 
-            default:
-                break;
+        case DIM3PLANEXY:
+            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXY);
+            break;
+        case DIM3PLANEXZ:
+            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXZ);
+            break;
+
+        default:
+            break;
     }
 
 #if ADIOS2_USE_MPI
