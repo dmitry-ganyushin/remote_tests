@@ -15,7 +15,7 @@
 #if ADIOS2_USE_MPI
 #include <mpi.h>
 #endif
-
+bool DEBUG = false;
 enum test_cases
 {
     DIM1,
@@ -74,8 +74,15 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                     var.SetSelection(adios2::Box<adios2::Dims>({startX},
                                                                {countX}));
                     reader.Get<double>(var, data1D[0]);
-//                    for (auto v: data1D)
-//                        std::cout << v << std::endl;
+                    if (DEBUG)
+                    {
+                        std::cout << "rank " << rank << ":";
+                        for (auto v: data1D)
+                        std::cout << v << " " ;
+                        std::cout << std::endl;
+                    }
+
+
                 }
             }
 
@@ -426,12 +433,13 @@ int main(int argc, char *argv[])
                 {"transport", required_argument, NULL, 't'},
                 {"variables", required_argument, NULL, 'v'},
                 {"ratio", required_argument, NULL, 'r'},
+                {"debug", no_argument, NULL, 'd'},
                 {0,0,0,0}
     };
 
         while (1) {
             int option_index = 0;
-            const int opt = getopt_long(argc, argv, "hc:f:e:t:v:", longopts, &option_index);
+            const int opt = getopt_long(argc, argv, "hc:f:e:t:v:d", longopts, &option_index);
 
             if (opt == -1) {
                 break;
@@ -450,6 +458,9 @@ int main(int argc, char *argv[])
                 case 'h':
                     std::cout << "Help: --case: 1D, 3DX, 3DY, 3DZ, 3DYZ, 3DXY, 3DXZ" << std::endl;
                     std::cout << "Usage: mpirun -n 8 ./test_vars  --case 3DX --variables var1 --filename /absolute/path/on/remote/machine/remote.bp" << std::endl;
+                    break;
+                case 'd':
+                    DEBUG = true;
                     break;
                 case 'c':
                     if(strcmp("1D", optarg) == 0) {
