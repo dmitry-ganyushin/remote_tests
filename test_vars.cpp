@@ -30,12 +30,12 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
 /* test 2 and 3
  * read 1 or many 1D variables
  */
-void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int direction);
+void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int direction, double ratio);
 /* test 5
  * A 3D subset from 3D variable
  */
 
-void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int direction);
+void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int direction, double ratio);
 /* test 5
  * A 3D subset from 3D variable
  */
@@ -113,7 +113,7 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     }
 }
 
-void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, int direction)
+void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, int direction, double ratio)
 {
     unsigned int startX;
     unsigned int startY;
@@ -153,8 +153,27 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                     auto globalSizeY = var.Shape()[1];
                     auto globalSizeZ = var.Shape()[2];
                     auto globalSize = globalSizeX * globalSizeY * globalSizeZ;
-                    auto localSize = globalSize / nproc;
-                    //std::cout << var.Shape()[0] << std::endl;
+                    if (ratio == 1.0){
+                        startX = 0;
+                        countX = globalSizeX;
+
+                        startY = 0;
+                        countY = globalSizeY;
+
+                        startZ = 0;
+                        countZ = globalSizeZ;
+                    }
+                    else{
+                        startX = (1 - ratio)/2.0 * globalSizeX;
+                        countX = globalSizeX * ratio;
+
+                        startY = (1 - ratio)/2.0 * globalSizeY;
+                        countY = globalSizeY * ratio;
+
+                        startZ = (1 - ratio)/2.0 * globalSizeZ;
+                        countZ = globalSizeZ * ratio;
+                    }
+
                    switch(direction) {
                        case DIM3X:
                            countX = globalSizeX / nproc;
@@ -164,9 +183,6 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                                // last process need to read all the rest of slices
                                countX = globalSizeX - countX * (nproc - 1);
                            }
-
-                           var.SetSelection(adios2::Box<adios2::Dims>(
-                                   {startX, 0, 0}, {countX, globalSizeY, globalSizeZ}));
                            break;
                        case DIM3Y:
                            countY = globalSizeY / nproc;
@@ -176,9 +192,6 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                                // last process need to read all the rest of slices
                                countY = globalSizeY - countY * (nproc - 1);
                            }
-
-                           var.SetSelection(adios2::Box<adios2::Dims>(
-                                   {0, countY, 0}, {globalSizeX, countY, globalSizeZ}));
                            break;
                        case DIM3Z:
                            countZ = globalSizeZ / nproc;
@@ -188,11 +201,10 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                                // last process need to read all the rest of slices
                                countZ = globalSizeZ - countZ * (nproc - 1);
                            }
-
-                           var.SetSelection(adios2::Box<adios2::Dims>(
-                                   {0, 0, startZ}, {globalSizeX, globalSizeY, countZ}));
                            break;
                    }
+                    var.SetSelection(adios2::Box<adios2::Dims>(
+                            {startX, startY, startZ}, {countX, countY, countZ}));
                     size_t elementsSize = var.SelectionSize();
                     std::vector<double> data3D(elementsSize);
                     reader.Get<double>(var, data3D.data(), adios2::Mode::Sync);
@@ -232,7 +244,7 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     }
 }
 
-void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, int direction)
+void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, int direction, double ratio)
 {
 
     unsigned int startX;
@@ -276,8 +288,16 @@ void read3DPlane(int nproc, int rank, const std::string &filename, const int NST
                             countY = 1;
                             startY = globalSizeY/2;
 
-                            startZ = 0;
-                            countZ = globalSizeZ;
+                            if (ratio == 1.0){
+                                startZ = 0;
+                                countZ = globalSizeZ;
+                            }
+                            else{
+                                startZ = (1 - ratio)/2.0 * globalSizeZ;
+                                countZ = globalSizeZ * ratio;
+                            }
+
+
 
                             break;
                         case DIM3PLANEYZ:
@@ -290,8 +310,14 @@ void read3DPlane(int nproc, int rank, const std::string &filename, const int NST
                             countX = 1;
                             startX = globalSizeX/2;
 
-                            startZ = 0;
-                            countZ = globalSizeZ;
+                            if (ratio == 1.0){
+                                startZ = 0;
+                                countZ = globalSizeZ;
+                            }
+                            else{
+                                startZ = (1 - ratio)/2.0 * globalSizeZ;
+                                countZ = globalSizeZ * ratio;
+                            }
 
                             break;
 
@@ -303,10 +329,18 @@ void read3DPlane(int nproc, int rank, const std::string &filename, const int NST
                                 // last process need to read all the rest of slices
                                 countY = globalSizeY - countY * (nproc - 1);
                             }
-                            startX = 0;
-                            countX = globalSizeX;
+
                             countZ = 1;
                             startZ = globalSizeZ / 2;
+
+                            if (ratio == 1.0){
+                                startX = 0;
+                                countX = globalSizeX;
+                            }
+                            else{
+                                startX = (1 - ratio)/2.0 * globalSizeX;
+                                countX = globalSizeX * ratio;
+                            }
 
                             break;
                         default:
@@ -376,6 +410,7 @@ int main(int argc, char *argv[])
     std::string engine = "BP5";
     std::string  transport = "filesystem";
     int mode = -1;
+    double ratio = 1.0;
 
     //should be adjusted for getopt
     auto start = std::vector<size_t>(3);
@@ -390,6 +425,7 @@ int main(int argc, char *argv[])
                 {"engine", required_argument, NULL, 'e'},
                 {"transport", required_argument, NULL, 't'},
                 {"variables", required_argument, NULL, 'v'},
+                {"ratio", required_argument, NULL, 'r'},
                 {0,0,0,0}
     };
 
@@ -461,6 +497,11 @@ int main(int argc, char *argv[])
                         variables.push_back(variables_string);
                     }
                     break;
+                case 'r':
+                    if (strlen(optarg) > 0){
+                        ratio = std::stod(optarg);
+                    }
+                    break;
                 default:
                     break;
             }
@@ -488,23 +529,23 @@ int main(int argc, char *argv[])
             read1D(nproc, rank, filename, NSTEPS, io, variables);
             break;
         case DIM3X:
-            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3X);
+            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3X, ratio);
             break;
         case DIM3Y:
-            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3Y);
+            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3Y, ratio);
             break;
         case DIM3Z:
-            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3Z);
+            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3Z, ratio);
             break;
         case DIM3PLANEYZ:
-            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEYZ);
+            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEYZ, ratio);
             break;
 
         case DIM3PLANEXY:
-            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXY);
+            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXY, ratio);
             break;
         case DIM3PLANEXZ:
-            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXZ);
+            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXZ, ratio);
             break;
 
         default:
