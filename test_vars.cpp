@@ -40,7 +40,7 @@ void read3DPlane(int nproc, int rank, const std::string &filename, const int NST
  * A 3D subset from 3D variable
  */
 
-void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in)
+void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, double ratio)
 {
     unsigned int startX;
     unsigned int countX;
@@ -70,6 +70,10 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                     auto localSize = globalSize / nproc;
                     startX = localSize * rank;
                     countX = localSize;
+                    if (rank == nproc - 1) {
+                        // last process need to read all the rest of slices
+                        countX = globalSize - countX * (nproc - 1);
+                    }
                     std::vector<double> data1D(countX);
                     var.SetSelection(adios2::Box<adios2::Dims>({startX},
                                                                {countX}));
@@ -159,7 +163,7 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                     auto globalSizeX = var.Shape()[0];
                     auto globalSizeY = var.Shape()[1];
                     auto globalSizeZ = var.Shape()[2];
-                    auto globalSize = globalSizeX * globalSizeY * globalSizeZ;
+
                     if (ratio == 1.0){
                         startX = 0;
                         countX = globalSizeX;
@@ -537,7 +541,7 @@ int main(int argc, char *argv[])
 
     switch (mode) {
         case DIM1:
-            read1D(nproc, rank, filename, NSTEPS, io, variables);
+            read1D(nproc, rank, filename, NSTEPS, io, variables, ratio);
             break;
         case DIM3X:
             read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3X, ratio);
@@ -551,7 +555,6 @@ int main(int argc, char *argv[])
         case DIM3PLANEYZ:
             read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEYZ, ratio);
             break;
-
         case DIM3PLANEXY:
             read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXY, ratio);
             break;
