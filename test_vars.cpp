@@ -8,6 +8,7 @@
 #include <string.h>
 #include <chrono>
 #include <iostream>
+#include <fstream>
 #include <vector>
 
 #include <adios2.h>
@@ -26,21 +27,24 @@ enum test_cases
     DIM3PLANEXY,
     DIM3PLANEXZ
 };
-void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables);
+void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int output_length);
 /* test 2 and 3
  * read 1 or many 1D variables
  */
-void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int direction, double ratio);
+void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int direction, double ratio, int output_line_length);
 /* test 5
  * A 3D subset from 3D variable
  */
 
-void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int direction, double ratio);
+void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables, int direction, double ratio, int output_line_length);
+
+std::string &getOutputString(int rank, int output_line_length, std::string &out, std::vector<double> &data);
+
 /* test 5
  * A 3D subset from 3D variable
  */
 
-void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, double ratio)
+void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, double ratio, int output_line_length)
 {
     unsigned int startX;
     unsigned int countX;
@@ -56,7 +60,7 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
 
         /* get variables with 1D shape */
 
-
+        std::string out;
         for (size_t step = 0; step < NSTEPS; step++) {
             reader.BeginStep();
             auto variables = io.AvailableVariables(true);
@@ -77,16 +81,10 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                     std::vector<double> data1D(countX);
                     var.SetSelection(adios2::Box<adios2::Dims>({startX},
                                                                {countX}));
-                    reader.Get<double>(var, data1D[0]);
+                    reader.Get<double>(var, data1D.data(), adios2::Mode::Sync);
+
                     if (DEBUG)
-                    {
-                        std::cout << "rank " << rank << ":";
-                        for (auto v: data1D)
-                        std::cout << v << " " ;
-                        std::cout << std::endl;
-                    }
-
-
+                        out = getOutputString(rank, output_line_length, out, data1D);
                 }
             }
 
@@ -96,7 +94,11 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
         reader.Close();
         end = std::chrono::system_clock::now();
         std::chrono::duration<double> elapsed_seconds = end - start;
-        std::cout << elapsed_seconds.count() << std::endl;
+        out += "Duration :" + std::to_string(elapsed_seconds.count()) + "\n";
+        std::ofstream out_file;
+        out_file.open ("output1D-" + std::to_string(rank) + ".log");
+        out_file << out;
+        out_file.close();
     }
     catch (std::invalid_argument &e)
     {
@@ -124,7 +126,25 @@ void read1D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     }
 }
 
-void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, int direction, double ratio)
+std::string &getOutputString(int rank, int output_line_length, std::string &out, std::vector<double> &data) {
+    {
+        out += "rank " + std::to_string(rank) + ":" + "\n";
+        int counter = 0;
+
+        for (auto v: data)
+        {
+            counter++;
+            out += std::to_string(v) + " " ;
+            if (counter == output_line_length){
+                out += "\n";
+                counter = 0;
+            }
+        }
+    }
+    return out;
+}
+
+void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, int direction, double ratio, int output_line_length)
 {
     unsigned int startX;
     unsigned int startY;
@@ -149,7 +169,7 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
 
         adios2::Engine reader = io.Open(filename, adios2::Mode::Read);
 
-
+        std::string out;
         for (size_t step = 0; step < NSTEPS; step++)
         {
             reader.BeginStep();
@@ -219,6 +239,8 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
                     size_t elementsSize = var.SelectionSize();
                     std::vector<double> data3D(elementsSize);
                     reader.Get<double>(var, data3D.data(), adios2::Mode::Sync);
+                    if (DEBUG)
+                        out = getOutputString(rank, output_line_length, out, data3D);
                 }
             }
 
@@ -227,7 +249,11 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
         reader.Close();
         end_time = std::chrono::system_clock::now();
         std::chrono::duration<double> elapsed_seconds = end_time - start_time;
-        std::cout << elapsed_seconds.count() << std::endl;
+        out += "Duration: " + std::to_string(elapsed_seconds.count()) + "\n";
+        std::ofstream out_file;
+        out_file.open ("output3D-" + std::to_string(rank) + ".log");
+        out_file << out;
+        out_file.close();
     }
     catch (std::invalid_argument &e)
     {
@@ -255,7 +281,7 @@ void read3D(int nproc, int rank, const std::string &filename, const int NSTEPS, 
     }
 }
 
-void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, int direction, double ratio)
+void read3DPlane(int nproc, int rank, const std::string &filename, const int NSTEPS, adios2::IO &io, std::vector<std::string> &variables_in, int direction, double ratio, int output_line_length)
 {
 
     unsigned int startX;
@@ -272,7 +298,7 @@ void read3DPlane(int nproc, int rank, const std::string &filename, const int NST
         start_time = std::chrono::system_clock::now();
 
         adios2::Engine reader = io.Open(filename, adios2::Mode::Read);
-
+        std::string out;
         for (size_t step = 0; step < NSTEPS; step++)
         {
             reader.BeginStep();
@@ -371,7 +397,11 @@ void read3DPlane(int nproc, int rank, const std::string &filename, const int NST
         reader.Close();
         end_time = std::chrono::system_clock::now();
         std::chrono::duration<double> elapsed_seconds = end_time - start_time;
-        std::cout << elapsed_seconds.count() << std::endl;
+        out += "Duration: " + std::to_string(elapsed_seconds.count()) + "\n";
+        std::ofstream out_file;
+        out_file.open ("output3DPlane-" + std::to_string(rank) + ".log");
+        out_file << out;
+        out_file.close();
     }
     catch (std::invalid_argument &e)
     {
@@ -422,6 +452,7 @@ int main(int argc, char *argv[])
     std::string  transport = "filesystem";
     int mode = -1;
     double ratio = 1.0;
+    int output_line_length = 10;
 
     //should be adjusted for getopt
     auto start = std::vector<size_t>(3);
@@ -438,12 +469,13 @@ int main(int argc, char *argv[])
                 {"variables", required_argument, NULL, 'v'},
                 {"ratio", required_argument, NULL, 'r'},
                 {"debug", no_argument, NULL, 'd'},
+                {"length", required_argument, NULL, 'l'},
                 {0,0,0,0}
     };
 
         while (1) {
             int option_index = 0;
-            const int opt = getopt_long(argc, argv, "hc:f:e:t:v:d", longopts, &option_index);
+            const int opt = getopt_long(argc, argv, "hc:f:e:t:v:dl:", longopts, &option_index);
 
             if (opt == -1) {
                 break;
@@ -517,6 +549,11 @@ int main(int argc, char *argv[])
                         ratio = std::stod(optarg);
                     }
                     break;
+                case 'l':
+                    if (strlen(optarg) > 0){
+                        output_line_length = std::stoi(optarg);
+                    }
+                    break;
                 default:
                     break;
             }
@@ -541,25 +578,25 @@ int main(int argc, char *argv[])
 
     switch (mode) {
         case DIM1:
-            read1D(nproc, rank, filename, NSTEPS, io, variables, ratio);
+            read1D(nproc, rank, filename, NSTEPS, io, variables, ratio, output_line_length);
             break;
         case DIM3X:
-            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3X, ratio);
+            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3X, ratio, output_line_length);
             break;
         case DIM3Y:
-            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3Y, ratio);
+            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3Y, ratio, output_line_length);
             break;
         case DIM3Z:
-            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3Z, ratio);
+            read3D(nproc, rank, filename, NSTEPS, io, variables, DIM3Z, ratio, output_line_length);
             break;
         case DIM3PLANEYZ:
-            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEYZ, ratio);
+            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEYZ, ratio, output_line_length);
             break;
         case DIM3PLANEXY:
-            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXY, ratio);
+            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXY, ratio, output_line_length);
             break;
         case DIM3PLANEXZ:
-            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXZ, ratio);
+            read3DPlane(nproc, rank, filename, NSTEPS, io, variables, DIM3PLANEXZ, ratio, output_line_length);
             break;
 
         default:
