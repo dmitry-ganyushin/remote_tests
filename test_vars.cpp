@@ -439,7 +439,7 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 #endif
-    const int NSTEPS = 1;
+    int NSTEPS = 1;
 
 #if ADIOS2_USE_MPI
     adios2::ADIOS adios(MPI_COMM_WORLD);
@@ -470,12 +470,13 @@ int main(int argc, char *argv[])
                 {"ratio", required_argument, NULL, 'r'},
                 {"debug", no_argument, NULL, 'd'},
                 {"length", required_argument, NULL, 'l'},
+                {"nsteps", required_argument, NULL, 'n'},
                 {0,0,0,0}
     };
 
         while (1) {
             int option_index = 0;
-            const int opt = getopt_long(argc, argv, "hc:f:e:t:v:dl:", longopts, &option_index);
+            const int opt = getopt_long(argc, argv, "hc:f:e:t:v:dl:n:", longopts, &option_index);
 
             if (opt == -1) {
                 break;
@@ -552,6 +553,11 @@ int main(int argc, char *argv[])
                 case 'l':
                     if (strlen(optarg) > 0){
                         output_line_length = std::stoi(optarg);
+                    }
+                    break;
+                case 'n':
+                    if (strlen(optarg) > 0){
+                        NSTEPS = std::stoi(optarg);
                     }
                     break;
                 default:
